@@ -27,6 +27,8 @@ fn main() -> eframe::Result {
         return Ok(()); // уже запущено - портали живуть у першій копії
     }
 
+    platform::keep_windows_on_top(std::time::Duration::from_millis(1500));
+
     let size = 64;
     let icon = egui::IconData { rgba: icon::rgba(size), width: size, height: size };
     // головне вікно існує лише заради eframe: крихітне, прозоре, за межами екрана і приховане

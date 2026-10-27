@@ -2,7 +2,7 @@
 //! Зміни застосовуються одразу, без кнопки «Зберегти».
 
 use egui::color_picker::{Alpha, color_edit_button_srgba};
-use egui::{ComboBox, Grid, RichText, ScrollArea, TextEdit, Ui};
+use egui::{ComboBox, Grid, Pos2, Rect, RichText, ScrollArea, TextEdit, Ui, Vec2};
 
 use crate::app::Command;
 use crate::config::{Conflict, Mode, Portal, Rule, Unmatched};
@@ -64,23 +64,44 @@ impl RuleRow {
     }
 }
 
+/// Бажаний розмір панелі; на маленькому екрані вона зменшується до робочої області.
+pub const SIZE: Vec2 = Vec2::new(760.0, 560.0);
+const GAP: f32 = 12.0;
+
 pub struct SettingsState {
     pub portal_id: String,
     pub rows: Vec<RuleRow>,
     pub confirm_delete: bool,
-    /// Де відкрилось вікно - далі його рухає лише користувач.
-    pub position: egui::Pos2,
+    /// Де і якого розміру відкрилось вікно - далі його рухає лише користувач.
+    pub rect: Rect,
 }
 
 impl SettingsState {
-    pub fn new(portal: &Portal, position: egui::Pos2) -> Self {
+    pub fn new(portal: &Portal, rect: Rect) -> Self {
         Self {
             portal_id: portal.id.clone(),
             rows: portal.rules.iter().map(RuleRow::from_rule).collect(),
             confirm_delete: false,
-            position,
+            rect,
         }
     }
+}
+
+/// Панель поруч із порталом: праворуч, якщо влазить, інакше ліворуч,
+/// і завжди в межах робочої області монітора.
+pub fn place_beside(portal: Rect, area: Rect) -> Rect {
+    let size = SIZE.min(area.size());
+    let right = portal.right() + GAP;
+    let left = portal.left() - GAP - size.x;
+    let x = if right + size.x <= area.right() {
+        right
+    } else if left >= area.left() {
+        left
+    } else {
+        area.right() - size.x
+    };
+    let y = portal.top().clamp(area.top(), area.bottom() - size.y);
+    Rect::from_min_size(Pos2::new(x.clamp(area.left(), area.right() - size.x), y), size)
 }
 
 pub fn show(
@@ -116,33 +137,40 @@ fn actions(
     out: &mut Vec<Command>,
 ) {
     let id = || portal.id.clone();
-    ui.horizontal_wrapped(|ui| {
-        if ui.add_enabled(!portal.folder.is_empty(), egui::Button::new("Відкрити папку")).clicked()
-        {
-            out.push(Command::OpenFolder(id()));
-        }
-        let can_undo = !state.last_results.is_empty() && state.progress.is_none();
-        if ui.add_enabled(can_undo, egui::Button::new("↩ Скасувати останнє")).clicked() {
-            out.push(Command::Undo(id()));
-        }
-        if ui.button("Дублювати").clicked() {
-            out.push(Command::Duplicate(id()));
-        }
-        if ui.button("Сховати").clicked() {
-            out.push(Command::Hide(id()));
-        }
-        if settings.confirm_delete {
-            ui.label("Видалити портал? Файли в папці не постраждають.");
+    if settings.confirm_delete {
+        // окремий рядок замість кнопок, щоб питання і відповіді стояли поруч
+        ui.horizontal(|ui| {
+            let question = format!("Видалити портал «{}»? Файли в папці залишаться.", portal.name);
+            ui.label(RichText::new(question).color(ui.visuals().warn_fg_color));
             if ui.button("Так, видалити").clicked() {
                 out.push(Command::Delete(id()));
             }
-            if ui.button("Ні").clicked() {
+            if ui.button("Скасувати").clicked() {
                 settings.confirm_delete = false;
             }
-        } else if ui.button("Видалити…").clicked() {
-            settings.confirm_delete = true;
-        }
-    });
+        });
+    } else {
+        ui.horizontal_wrapped(|ui| {
+            let has_folder = !portal.folder.is_empty();
+            if ui.add_enabled(has_folder, egui::Button::new("Відкрити папку")).clicked() {
+                out.push(Command::OpenFolder(id()));
+            }
+            let can_undo = !state.last_results.is_empty() && state.progress.is_none();
+            if ui.add_enabled(can_undo, egui::Button::new("↩ Скасувати останнє")).clicked()
+            {
+                out.push(Command::Undo(id()));
+            }
+            if ui.button("Дублювати").clicked() {
+                out.push(Command::Duplicate(id()));
+            }
+            if ui.button("Сховати").clicked() {
+                out.push(Command::Hide(id()));
+            }
+            if ui.button("Видалити…").clicked() {
+                settings.confirm_delete = true;
+            }
+        });
+    }
     if !state.report.is_empty() {
         ui.collapsing(format!("Останнє кидання: проблем {}", state.report.len()), |ui| {
             for line in &state.report {
@@ -295,7 +323,7 @@ mod tests {
     }
 
     fn harness(portal: Portal) -> Harness<'static, Screen> {
-        let settings = SettingsState::new(&portal, egui::Pos2::ZERO);
+        let settings = SettingsState::new(&portal, Rect::from_min_size(Pos2::ZERO, SIZE));
         let screen = Screen { portal, settings, state: PortalState::default(), out: Vec::new() };
         Harness::builder()
             .with_size([760.0, 560.0])
@@ -338,6 +366,35 @@ mod tests {
         harness.run();
         assert_eq!(harness.state().portal.rules[0].extensions, ["pdf", "docx"]);
         assert!(harness.state().out.iter().any(|c| matches!(c, Command::Changed)));
+    }
+
+    #[test]
+    fn panel_stays_on_screen() {
+        let area = Rect::from_min_size(Pos2::ZERO, Vec2::new(1920.0, 1040.0));
+        let portal = |x: f32, y: f32| Rect::from_min_size(Pos2::new(x, y), Vec2::new(180.0, 110.0));
+
+        // місця праворуч досить
+        let panel = place_beside(portal(100.0, 100.0), area);
+        assert_eq!(panel.min, Pos2::new(292.0, 100.0));
+
+        // портал біля правого краю - панель ліворуч від нього
+        let panel = place_beside(portal(1700.0, 100.0), area);
+        assert_eq!(panel.right(), 1700.0 - GAP);
+
+        // портал унизу - панель піднімається, щоб не вилізти за екран
+        let panel = place_beside(portal(100.0, 900.0), area);
+        assert_eq!(panel.bottom(), area.bottom());
+
+        // ні праворуч, ні ліворуч не влазить - притискаємо до краю
+        let narrow = Rect::from_min_size(Pos2::ZERO, Vec2::new(1000.0, 1040.0));
+        let panel = place_beside(portal(400.0, 100.0), narrow);
+        assert!(narrow.contains_rect(panel), "{panel:?}");
+
+        // маленький екран - панель зменшується
+        let small = Rect::from_min_size(Pos2::new(-1366.0, 0.0), Vec2::new(1366.0, 500.0));
+        let panel = place_beside(portal(-200.0, 50.0), small);
+        assert!(small.contains_rect(panel), "{panel:?}");
+        assert_eq!(panel.height(), 500.0);
     }
 
     #[test]

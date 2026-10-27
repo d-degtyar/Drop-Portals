@@ -46,6 +46,8 @@ pub struct PortalState {
     /// Положення, з яким вікно створили. Поки вікно живе, його не чіпаємо,
     /// інакше egui сперечався б з користувачем, що тягне вікно.
     pub spawn: Option<Rect>,
+    /// Пікселів на точку на моніторі, де стоїть портал.
+    pub pixels_per_point: Option<f32>,
 }
 
 impl PortalState {
@@ -84,6 +86,7 @@ fn faded(color: Color32, opacity: f32) -> Color32 {
 pub fn show(ui: &mut Ui, portal: &mut Portal, state: &mut PortalState, out: &mut Vec<Command>) {
     let rect = ui.max_rect();
     track_geometry(ui, portal, out);
+    state.pixels_per_point = ui.input(|i| i.viewport().native_pixels_per_point);
 
     let (hovered, dropped) = ui.input(|i| {
         let hovered: Vec<PathBuf> = i.raw.hovered_files.iter().filter_map(|f| f.path.clone()).collect();

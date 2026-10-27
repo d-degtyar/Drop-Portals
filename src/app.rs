@@ -156,6 +156,22 @@ impl PortalsApp {
         }
     }
 
+    /// Робоча область монітора під точкою (у точках egui); без Windows - весь світ.
+    fn work_area_at(&self, id: &str, point: Pos2) -> Rect {
+        let pixels_per_point = self
+            .states
+            .get(id)
+            .and_then(|state| state.pixels_per_point)
+            .unwrap_or_else(|| 1.0 / self.points_per_pixel());
+        let pixels = point * pixels_per_point;
+        match platform::work_area_at(pixels.x, pixels.y) {
+            Some((x, y, w, h)) => {
+                Rect::from_min_size(Pos2::new(x, y) / pixels_per_point, Vec2::new(w, h) / pixels_per_point)
+            }
+            None => Rect::from_min_size(Pos2::new(-1e6, -1e6), Vec2::splat(2e6)),
+        }
+    }
+
     /// Якщо монітор від'єднали, портал повертається на видимий екран.
     fn fit_on_screen(&mut self) {
         let Some((x, y, w, h)) = platform::virtual_screen() else { return };
@@ -335,9 +351,10 @@ impl PortalsApp {
     fn open_settings(&mut self, id: &str) {
         let Some(index) = self.portal_index(id) else { return };
         let portal = &self.config.portals[index];
-        // праворуч від порталу
-        let position = Pos2::new(portal.x + portal.width + 12.0, portal.y);
-        self.settings = Some(SettingsState::new(portal, position));
+        let anchor =
+            Rect::from_min_size(Pos2::new(portal.x, portal.y), Vec2::new(portal.width, portal.height));
+        let rect = settings_view::place_beside(anchor, self.work_area_at(id, anchor.center()));
+        self.settings = Some(SettingsState::new(portal, rect));
     }
 
     fn start_transfer(&mut self, id: &str, paths: Vec<PathBuf>, mode: Mode) {
@@ -437,8 +454,8 @@ impl PortalsApp {
         let builder = ViewportBuilder::default()
             .with_title(format!("{} - налаштування", portal.name))
             .with_always_on_top()
-            .with_position(settings.position)
-            .with_inner_size([760.0, 560.0])
+            .with_position(settings.rect.min)
+            .with_inner_size(settings.rect.size())
             .with_min_inner_size([520.0, 360.0]);
         ui.ctx().show_viewport_immediate(ViewportId::from_hash_of("settings"), builder, |ui, _| {
             if ui.input(|i| i.viewport().close_requested()) {
