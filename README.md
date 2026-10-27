@@ -52,11 +52,10 @@
 
 ## Звідки взяти DropPortals.exe
 
-- **GitHub Actions:** кожен пуш у `drop_portals/` збирає програму на Windows. Готовий файл лежить
-  у вкладці *Actions* → останній запуск «Drop Portals» → *Artifacts* → `DropPortals-windows`.
+- **GitHub Actions:** кожен пуш збирає програму на Windows. Готовий файл лежить
+  у вкладці *Actions* → останній запуск «Build» → *Artifacts* → `DropPortals-windows`.
 - **Самостійно на Windows:** встановіть [Rust](https://rustup.rs) і виконайте
   ```bat
-  cd drop_portals
   cargo build --release
   ```
   Результат: `target\release\DropPortals.exe`.
