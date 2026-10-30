@@ -80,7 +80,7 @@ cargo build --release --target x86_64-pc-windows-gnu
 ```
 
 Every push is built and tested on Windows by GitHub Actions; the exe is attached to each run
-under *Artifacts*. Pushing a `v*` tag publishes a release with notes from [CHANGELOG.md](CHANGELOG.md).
+under *Artifacts*. Pushing a `v*` tag, or running the Release workflow by hand, publishes a release with notes from [CHANGELOG.md](CHANGELOG.md).
 
 ## Code layout
 

@@ -80,7 +80,7 @@ cargo build --release --target x86_64-pc-windows-gnu
 ```
 
 Кожен пуш GitHub Actions збирає й тестує на Windows; `.exe` лежить у кожному запуску в *Artifacts*.
-Пуш тегу `v*` публікує реліз з описом з [CHANGELOG.md](CHANGELOG.md).
+Пуш тегу `v*` або ручний запуск workflow Release публікує реліз з описом з [CHANGELOG.md](CHANGELOG.md).
 
 ## Як влаштований код
 
