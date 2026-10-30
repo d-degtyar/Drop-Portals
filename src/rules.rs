@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use chrono::{DateTime, Datelike, Local};
 
 use crate::config::{Portal, Rule, Unmatched};
+use crate::i18n::tr;
 
 const MB: f64 = 1024.0 * 1024.0;
 
@@ -168,7 +169,7 @@ pub fn summary(portal: &Portal, limit: usize) -> String {
         }
     }
     match exts.len() {
-        0 => "усі файли".to_owned(),
+        0 => tr("усі файли", "all files").to_owned(),
         n if n > limit => format!("{} +{}", exts[..limit].join(" "), n - limit),
         _ => exts.join(" "),
     }

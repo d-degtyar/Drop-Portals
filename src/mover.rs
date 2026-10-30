@@ -5,6 +5,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 use crate::config::{Conflict, Mode, Portal};
+use crate::i18n::tr;
 use crate::rules::resolve_destination;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -117,17 +118,25 @@ fn put(src: &Path, dst: &Path, mode: Mode) -> io::Result<()> {
 pub fn transfer(source: &Path, dest_dir: &Path, mode: Mode, conflict: Conflict) -> TransferResult {
     let src = std::path::absolute(source).unwrap_or_else(|_| source.to_path_buf());
     if fs::symlink_metadata(&src).is_err() {
-        return TransferResult::new(&src, Action::Skipped, "файл не знайдено");
+        return TransferResult::new(&src, Action::Skipped, tr("файл не знайдено", "file not found"));
     }
     let Some(name) = src.file_name() else {
-        return TransferResult::new(&src, Action::Error, "не можна перенести корінь диска");
+        return TransferResult::new(
+            &src,
+            Action::Error,
+            tr("не можна перенести корінь диска", "cannot move a drive root"),
+        );
     };
     let target = dest_dir.join(name);
     if comparable(&src) == comparable(&target) {
-        return TransferResult::new(&src, Action::Skipped, "вже в цій папці");
+        return TransferResult::new(&src, Action::Skipped, tr("вже в цій папці", "already in this folder"));
     }
     if src.is_dir() && is_inside(dest_dir, &src) {
-        return TransferResult::new(&src, Action::Error, "папку не можна покласти саму в себе");
+        return TransferResult::new(
+            &src,
+            Action::Error,
+            tr("папку не можна покласти саму в себе", "cannot put a folder into itself"),
+        );
     }
     place(&src, dest_dir, target, mode, conflict)
         .unwrap_or_else(|error| TransferResult::new(&src, Action::Error, error.to_string()))
@@ -143,7 +152,13 @@ fn place(
     fs::create_dir_all(dest_dir)?;
     if fs::symlink_metadata(&target).is_ok() {
         match conflict {
-            Conflict::Skip => return Ok(TransferResult::new(src, Action::Skipped, "такий файл уже є")),
+            Conflict::Skip => {
+                return Ok(TransferResult::new(
+                    src,
+                    Action::Skipped,
+                    tr("такий файл уже є", "a file with this name exists"),
+                ));
+            }
             Conflict::Replace if target.is_file() && src.is_file() => {
                 // спершу кладемо поруч під тимчасовим ім'ям, потім підміняємо:
                 // якщо щось піде не так, старий файл не пропаде
@@ -151,7 +166,7 @@ fn place(
                 put(src, &tmp, mode)?;
                 fs::rename(&tmp, &target)?;
                 let mut result = TransferResult::done(src, target, mode);
-                result.reason = "замінено".into();
+                result.reason = tr("замінено", "replaced").into();
                 return Ok(result);
             }
             _ => target = unique_path(&target),
@@ -171,7 +186,11 @@ pub fn transfer_many(
     for (index, path) in paths.iter().enumerate() {
         results.push(match resolve_destination(portal, path) {
             Some(dest) => transfer(path, &dest, mode, portal.conflict),
-            None => TransferResult::new(path, Action::Skipped, "не підходить під правила порталу"),
+            None => TransferResult::new(
+                path,
+                Action::Skipped,
+                tr("не підходить під правила порталу", "does not match the portal rules"),
+            ),
         });
         progress(index + 1, paths.len());
     }
@@ -185,7 +204,11 @@ pub fn undo(results: &[TransferResult]) -> Vec<String> {
         let Some(target) = &item.target else { continue };
         let outcome = match item.action {
             Action::Moved if fs::symlink_metadata(&item.source).is_ok() => {
-                errors.push(format!("{}: на старому місці вже є файл", item.file_name()));
+                errors.push(format!(
+                    "{}: {}",
+                    item.file_name(),
+                    tr("на старому місці вже є файл", "a file is already in the original place")
+                ));
                 continue;
             }
             Action::Moved => item

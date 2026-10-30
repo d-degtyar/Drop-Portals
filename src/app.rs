@@ -13,6 +13,7 @@ use std::thread::JoinHandle;
 use egui::{Pos2, Rect, Ui, Vec2, ViewportBuilder, ViewportCommand, ViewportId};
 
 use crate::config::{self, AppConfig, Mode, Portal};
+use crate::i18n::{self, tr};
 use crate::mover::{self, Action, TransferResult};
 use crate::platform::{self, autostart};
 use crate::portal_view::{self, PortalState, Progress};
@@ -80,6 +81,7 @@ impl PortalsApp {
     pub fn new(ctx: &egui::Context, config_path: PathBuf) -> Self {
         let (events, inbox) = channel();
         let mut config = config::load(&config_path);
+        i18n::set(config.language.unwrap_or_else(i18n::system));
         if config.portals.is_empty() {
             config.portals.push(Portal::default());
         }
@@ -125,7 +127,7 @@ impl PortalsApp {
     fn save_now(&mut self) {
         self.save_at = None;
         if let Err(error) = config::save(&self.config, &self.config_path) {
-            eprintln!("Не вдалося зберегти налаштування: {error}");
+            eprintln!("Failed to save settings: {error}");
         }
     }
 
@@ -213,7 +215,8 @@ impl PortalsApp {
 
     fn new_portal(&mut self, portal: Portal) {
         if cfg!(windows) && portal.folder.is_empty() {
-            let title = format!("Папка для порталу «{}»", portal.name);
+            let title =
+                format!("{} {}", tr("Папка для порталу", "Folder for portal"), i18n::quoted(&portal.name));
             self.ask_folder(title, String::new(), FolderTarget::New(Box::new(portal)));
         } else {
             self.add_portal(portal);
@@ -272,6 +275,12 @@ impl PortalsApp {
                     self.autostart_on = autostart::is_enabled();
                 }
             }
+            TrayCommand::Language(choice) => {
+                self.config.language = choice;
+                i18n::set(choice.unwrap_or_else(i18n::system));
+                self.schedule_save();
+                self.wake_ui();
+            }
             TrayCommand::ConfigFolder => {
                 if let Some(dir) = self.config_path.parent() {
                     let _ = std::fs::create_dir_all(dir);
@@ -311,7 +320,7 @@ impl PortalsApp {
                     let source = &self.config.portals[index];
                     let copy = Portal {
                         id: config::new_id(),
-                        name: format!("{} (копія)", source.name),
+                        name: format!("{} ({})", source.name, tr("копія", "copy")),
                         visible: true,
                         x: source.x + 30.0,
                         y: source.y + 30.0,
@@ -343,7 +352,8 @@ impl PortalsApp {
     fn choose_folder(&mut self, id: String, then_drop: Option<(Vec<PathBuf>, Mode)>) {
         let Some(index) = self.portal_index(&id) else { return };
         let portal = &self.config.portals[index];
-        let title = format!("Папка для порталу «{}»", portal.name);
+        let title =
+            format!("{} {}", tr("Папка для порталу", "Folder for portal"), i18n::quoted(&portal.name));
         let start = portal.folder.clone();
         self.ask_folder(title, start, FolderTarget::Portal { id, then_drop });
     }
@@ -407,9 +417,9 @@ impl PortalsApp {
         let errors = mover::undo(&std::mem::take(&mut state.last_results));
         let now = self.ctx.input(|i| i.time);
         let (text, ok) = if errors.is_empty() {
-            ("↩ повернуто".to_owned(), true)
+            (tr("↩ повернуто", "↩ restored").to_owned(), true)
         } else {
-            (format!("не вдалося повернути: {}", errors.len()), false)
+            (format!("{}: {}", tr("не вдалося повернути", "could not restore"), errors.len()), false)
         };
         state.report = errors;
         state.flash = Some(portal_view::Flash { text, ok, until: now + 4.0 });
@@ -452,7 +462,7 @@ impl PortalsApp {
         };
         let state = self.states.entry(portal.id.clone()).or_default();
         let builder = ViewportBuilder::default()
-            .with_title(format!("{} - налаштування", portal.name))
+            .with_title(format!("{} - {}", portal.name, tr("налаштування", "settings")))
             .with_always_on_top()
             .with_position(settings.rect.min)
             .with_inner_size(settings.rect.size())
@@ -468,7 +478,7 @@ impl PortalsApp {
 
 fn set_folder(portal: &mut Portal, folder: &Path) {
     portal.folder = folder.to_string_lossy().into_owned();
-    if portal.name == Portal::default().name
+    if config::is_placeholder_name(&portal.name)
         && let Some(name) = folder.file_name()
     {
         portal.name = name.to_string_lossy().into_owned();
@@ -481,15 +491,19 @@ fn describe(results: &[TransferResult]) -> (String, bool) {
     let (moved, copied, skipped, errors) =
         (count(Action::Moved), count(Action::Copied), count(Action::Skipped), count(Action::Error));
     if errors > 0 {
-        return (format!("помилок: {errors}"), false);
+        return (format!("{}: {errors}", tr("помилок", "errors")), false);
     }
     if moved + copied == 0 {
-        return (format!("пропущено {skipped}"), false);
+        return (format!("{} {skipped}", tr("пропущено", "skipped")), false);
     }
-    let verb = if copied > 0 && moved == 0 { "скопійовано" } else { "переміщено" };
+    let verb = if copied > 0 && moved == 0 {
+        tr("скопійовано", "copied")
+    } else {
+        tr("переміщено", "moved")
+    };
     let mut text = format!("✓ {verb} {}", moved + copied);
     if skipped > 0 {
-        text.push_str(&format!(" · пропущено {skipped}"));
+        text.push_str(&format!(" · {} {skipped}", tr("пропущено", "skipped")));
     }
     (text, true)
 }
@@ -502,7 +516,7 @@ impl eframe::App for PortalsApp {
         }
         self.poll_jobs();
         if let Some(tray) = &mut self.tray {
-            tray.update(&self.config.portals, self.autostart_on);
+            tray.update(&self.config.portals, self.autostart_on, self.config.language);
         }
         if self.save_at.is_some_and(|at| ctx.input(|i| i.time) >= at) {
             self.save_now();
@@ -565,6 +579,6 @@ mod tests {
         assert_eq!(portal.name, "Clients");
         let mut named = presets::sorter_portal("");
         set_folder(&mut named, Path::new("/x/Clients"));
-        assert_eq!(named.name, presets::SORTER_NAME);
+        assert_eq!(named.name, presets::sorter_name());
     }
 }

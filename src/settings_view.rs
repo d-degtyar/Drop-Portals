@@ -6,13 +6,21 @@ use egui::{ComboBox, Grid, Pos2, Rect, RichText, ScrollArea, TextEdit, Ui, Vec2}
 
 use crate::app::Command;
 use crate::config::{Conflict, Mode, Portal, Rule, Unmatched};
+use crate::i18n::tr;
 use crate::portal_view::{PortalState, parse_color};
 use crate::presets::{self, PRESETS};
 use crate::rules::normalize_extensions;
 
-const HELP: &str = "Перше правило, що підійшло, вирішує, куди піде файл. Порожня клітинка = без умови.\n\
-Підпапка: порожньо - прямо в папку порталу. Шаблон: {ext}, {EXT}, {name}, {year}, {month}, {day}, \
-напр. «Video\\{year}-{month}».";
+fn help() -> &'static str {
+    tr(
+        "Перше правило, що підійшло, вирішує, куди піде файл. Порожня клітинка = без умови.\n\
+         Підпапка: порожньо - прямо в папку порталу. Шаблон: {ext}, {EXT}, {name}, {year}, {month}, {day}, \
+         напр. «Video\\{year}-{month}».",
+        "The first matching rule decides where a file goes. An empty cell means no condition.\n\
+         Subfolder: empty - straight into the portal folder. Template: {ext}, {EXT}, {name}, {year}, \
+         {month}, {day}, e.g. \"Video\\{year}-{month}\".",
+    )
+}
 
 /// Рядок таблиці правил у вигляді тексту, як його набирає користувач.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -120,7 +128,7 @@ pub fn show(
             ui.add_space(8.0);
             rules_table(ui, settings);
             ui.add_space(6.0);
-            ui.label(RichText::new(HELP).weak().small());
+            ui.label(RichText::new(help()).weak().small());
         });
     });
     portal.rules = settings.rows.iter().filter_map(RuleRow::to_rule).collect();
@@ -140,85 +148,100 @@ fn actions(
     if settings.confirm_delete {
         // окремий рядок замість кнопок, щоб питання і відповіді стояли поруч
         ui.horizontal(|ui| {
-            let question = format!("Видалити портал «{}»? Файли в папці залишаться.", portal.name);
+            let question = format!(
+                "{} {}? {}",
+                tr("Видалити портал", "Delete portal"),
+                crate::i18n::quoted(&portal.name),
+                tr("Файли в папці залишаться.", "Files in the folder stay."),
+            );
             ui.label(RichText::new(question).color(ui.visuals().warn_fg_color));
-            if ui.button("Так, видалити").clicked() {
+            if ui.button(tr("Так, видалити", "Yes, delete")).clicked() {
                 out.push(Command::Delete(id()));
             }
-            if ui.button("Скасувати").clicked() {
+            if ui.button(tr("Скасувати", "Cancel")).clicked() {
                 settings.confirm_delete = false;
             }
         });
     } else {
         ui.horizontal_wrapped(|ui| {
             let has_folder = !portal.folder.is_empty();
-            if ui.add_enabled(has_folder, egui::Button::new("Відкрити папку")).clicked() {
+            if ui.add_enabled(has_folder, egui::Button::new(tr("Відкрити папку", "Open folder"))).clicked()
+            {
                 out.push(Command::OpenFolder(id()));
             }
             let can_undo = !state.last_results.is_empty() && state.progress.is_none();
-            if ui.add_enabled(can_undo, egui::Button::new("↩ Скасувати останнє")).clicked()
+            if ui.add_enabled(can_undo, egui::Button::new(tr("↩ Скасувати останнє", "↩ Undo last"))).clicked()
             {
                 out.push(Command::Undo(id()));
             }
-            if ui.button("Дублювати").clicked() {
+            if ui.button(tr("Дублювати", "Duplicate")).clicked() {
                 out.push(Command::Duplicate(id()));
             }
-            if ui.button("Сховати").clicked() {
+            if ui.button(tr("Сховати", "Hide")).clicked() {
                 out.push(Command::Hide(id()));
             }
-            if ui.button("Видалити…").clicked() {
+            if ui.button(tr("Видалити…", "Delete…")).clicked() {
                 settings.confirm_delete = true;
             }
         });
     }
     if !state.report.is_empty() {
-        ui.collapsing(format!("Останнє кидання: проблем {}", state.report.len()), |ui| {
-            for line in &state.report {
-                ui.label(RichText::new(line).small());
-            }
-        });
+        ui.collapsing(
+            format!("{}: {}", tr("Останнє кидання, проблем", "Last drop, problems"), state.report.len()),
+            |ui| {
+                for line in &state.report {
+                    ui.label(RichText::new(line).small());
+                }
+            },
+        );
     }
 }
 
 fn form(ui: &mut Ui, portal: &mut Portal, out: &mut Vec<Command>) {
     Grid::new("form").num_columns(2).spacing([12.0, 8.0]).show(ui, |ui| {
-        ui.label("Назва");
+        ui.label(tr("Назва", "Name"));
         ui.add(TextEdit::singleline(&mut portal.name).desired_width(320.0));
         ui.end_row();
 
-        ui.label("Папка");
+        ui.label(tr("Папка", "Folder"));
         ui.horizontal(|ui| {
             ui.add(
                 TextEdit::singleline(&mut portal.folder)
                     .desired_width(320.0)
                     .hint_text("D:\\Projects\\Video"),
             );
-            if cfg!(windows) && ui.button("Огляд…").clicked() {
+            if cfg!(windows) && ui.button(tr("Огляд…", "Browse…")).clicked() {
                 out.push(Command::ChooseFolder(portal.id.clone()));
             }
         });
         ui.end_row();
 
-        ui.label("Колір");
+        ui.label(tr("Колір", "Color"));
         let mut color = parse_color(&portal.color);
         if color_edit_button_srgba(ui, &mut color, Alpha::Opaque).changed() {
             portal.color = color.to_hex()[..7].to_owned();
         }
         ui.end_row();
 
-        ui.label("Дія");
+        ui.label(tr("Дія", "Action"));
         ui.horizontal(|ui| {
-            ui.radio_value(&mut portal.mode, Mode::Move, "Переміщувати");
-            ui.radio_value(&mut portal.mode, Mode::Copy, "Копіювати");
-            ui.label(RichText::new("(Ctrl під час кидання - навпаки)").weak());
+            ui.radio_value(&mut portal.mode, Mode::Move, tr("Переміщувати", "Move"));
+            ui.radio_value(&mut portal.mode, Mode::Copy, tr("Копіювати", "Copy"));
+            ui.label(
+                RichText::new(tr(
+                    "(Ctrl під час кидання - навпаки)",
+                    "(hold Ctrl while dropping for the opposite)",
+                ))
+                .weak(),
+            );
         });
         ui.end_row();
 
-        ui.label("Якщо файл уже є");
+        ui.label(tr("Якщо файл уже є", "If the file exists"));
         let conflict_label = |c: Conflict| match c {
-            Conflict::Rename => "Додати номер: файл (2).ext",
-            Conflict::Skip => "Пропустити",
-            Conflict::Replace => "Замінити",
+            Conflict::Rename => tr("Додати номер: файл (2).ext", "Add a number: file (2).ext"),
+            Conflict::Skip => tr("Пропустити", "Skip"),
+            Conflict::Replace => tr("Замінити", "Replace"),
         };
         ComboBox::from_id_salt("conflict")
             .width(260.0)
@@ -230,10 +253,10 @@ fn form(ui: &mut Ui, portal: &mut Portal, out: &mut Vec<Command>) {
             });
         ui.end_row();
 
-        ui.label("Файли без правила");
+        ui.label(tr("Файли без правила", "Files without a rule"));
         let unmatched_label = |u: Unmatched| match u {
-            Unmatched::Root => "Класти прямо в папку порталу",
-            Unmatched::Skip => "Не приймати",
+            Unmatched::Root => tr("Класти прямо в папку порталу", "Put straight into the portal folder"),
+            Unmatched::Skip => tr("Не приймати", "Do not accept"),
         };
         ComboBox::from_id_salt("unmatched")
             .width(260.0)
@@ -245,7 +268,7 @@ fn form(ui: &mut Ui, portal: &mut Portal, out: &mut Vec<Command>) {
             });
         ui.end_row();
 
-        ui.label("Непрозорість");
+        ui.label(tr("Непрозорість", "Opacity"));
         ui.add(
             egui::Slider::new(&mut portal.opacity, 0.3..=1.0)
                 .custom_formatter(|v, _| format!("{:.0}%", v * 100.0)),
@@ -255,18 +278,26 @@ fn form(ui: &mut Ui, portal: &mut Portal, out: &mut Vec<Command>) {
 }
 
 fn rules_table(ui: &mut Ui, settings: &mut SettingsState) {
-    ui.label(RichText::new("Правила сортування").strong());
+    ui.label(RichText::new(tr("Правила сортування", "Sorting rules")).strong());
     let rows = &mut settings.rows;
     let mut action: Option<(usize, i32)> = None; // (рядок, -1 вгору / 1 вниз / 0 видалити)
     Grid::new("rules").striped(true).num_columns(7).spacing([6.0, 4.0]).show(ui, |ui| {
-        for title in ["", "Розширення", "Маска імені", "Мін, МБ", "Макс, МБ", "Підпапка", ""]
-        {
+        let titles = [
+            "",
+            tr("Розширення", "Extensions"),
+            tr("Маска імені", "Name mask"),
+            tr("Мін, МБ", "Min, MB"),
+            tr("Макс, МБ", "Max, MB"),
+            tr("Підпапка", "Subfolder"),
+            "",
+        ];
+        for title in titles {
             ui.label(RichText::new(title).weak());
         }
         ui.end_row();
         let count = rows.len();
         for (index, row) in rows.iter_mut().enumerate() {
-            ui.checkbox(&mut row.enabled, "").on_hover_text("Увімкнено");
+            ui.checkbox(&mut row.enabled, "").on_hover_text(tr("Увімкнено", "Enabled"));
             ui.add_sized([170.0, 20.0], TextEdit::singleline(&mut row.extensions).hint_text("pdf docx"));
             ui.add_sized([90.0, 20.0], TextEdit::singleline(&mut row.pattern).hint_text("*invoice*"));
             ui.add_sized([50.0, 20.0], TextEdit::singleline(&mut row.min_mb));
@@ -279,7 +310,8 @@ fn rules_table(ui: &mut Ui, settings: &mut SettingsState) {
                 if ui.add_enabled(index + 1 < count, egui::Button::new("↓").small()).clicked() {
                     action = Some((index, 1));
                 }
-                if ui.small_button("✕").on_hover_text("Видалити правило").clicked() {
+                if ui.small_button("✕").on_hover_text(tr("Видалити правило", "Delete rule")).clicked()
+                {
                     action = Some((index, 0));
                 }
             });
@@ -295,12 +327,12 @@ fn rules_table(ui: &mut Ui, settings: &mut SettingsState) {
     }
 
     ui.horizontal(|ui| {
-        if ui.button("+ Правило").clicked() {
+        if ui.button(tr("+ Правило", "+ Rule")).clicked() {
             rows.push(RuleRow { enabled: true, ..RuleRow::default() });
         }
-        ui.menu_button("+ З набору", |ui| {
+        ui.menu_button(tr("+ З набору", "+ From preset"), |ui| {
             for preset in PRESETS {
-                if ui.button(preset.name).clicked() {
+                if ui.button(preset.name()).clicked() {
                     rows.push(RuleRow::from_rule(&presets::rule(preset, "")));
                 }
             }

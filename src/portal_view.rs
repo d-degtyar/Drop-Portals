@@ -13,6 +13,7 @@ use egui::{
 use crate::app::Command;
 use crate::config::Portal;
 use crate::fonts::BOLD;
+use crate::i18n::tr;
 use crate::mover::TransferResult;
 use crate::platform;
 use crate::rules::{resolve_destination, summary};
@@ -100,7 +101,7 @@ pub fn show(ui: &mut Ui, portal: &mut Portal, state: &mut PortalState, out: &mut
             let mode = if ctrl { portal.mode.toggled() } else { portal.mode };
             out.push(Command::Drop { id: portal.id.clone(), paths: dropped, mode });
         } else {
-            state.flash(ui, "не приймає ці файли", false);
+            state.flash(ui, tr("не приймає ці файли", "does not take these files"), false);
         }
     }
 
@@ -188,16 +189,19 @@ fn paint(ui: &Ui, rect: Rect, portal: &Portal, state: &mut PortalState, hover: H
     let lines: Vec<String> = if let Some(flash) = state.flash.as_ref().filter(|_| state.progress.is_none()) {
         vec![flash.text.clone()]
     } else if hover == Hover::Reject {
-        vec!["не приймає ці файли".into()]
+        vec![tr("не приймає ці файли", "does not take these files").into()]
     } else if portal.folder.is_empty() {
-        vec!["кинь файли або".into(), "ПКМ → налаштування".into()]
+        vec![
+            tr("кинь файли або", "drop files or").into(),
+            tr("ПКМ → налаштування", "right-click → settings").into(),
+        ]
     } else {
         let folder = Path::new(&portal.folder)
             .file_name()
             .map_or(portal.folder.clone(), |n| n.to_string_lossy().into());
         let mut lines = vec![format!("→ {folder}"), summary(portal, 4)];
         if portal.mode == crate::config::Mode::Copy {
-            lines.push("копіювання".into());
+            lines.push(tr("копіювання", "copying").into());
         }
         lines
     };

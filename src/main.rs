@@ -7,6 +7,7 @@
 mod app;
 mod config;
 mod fonts;
+mod i18n;
 mod icon;
 mod mover;
 mod platform;
@@ -27,7 +28,7 @@ fn main() -> eframe::Result {
         return Ok(()); // уже запущено - портали живуть у першій копії
     }
 
-    platform::keep_windows_on_top(std::time::Duration::from_millis(1500));
+    platform::watch_windows(std::time::Duration::from_millis(1500));
 
     let size = 64;
     let icon = egui::IconData { rgba: icon::rgba(size), width: size, height: size };

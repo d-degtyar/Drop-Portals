@@ -95,46 +95,113 @@ pub fn work_area_at(_x: f32, _y: f32) -> Option<(f32, f32, f32, f32)> {
     None
 }
 
-/// Windows інколи «опускає» вікна, закріплені поверх усіх: напр., коли активується інша
-/// програма, теж закріплена поверх. Тож раз на `interval` знову піднімаємо наші вікна.
-/// Окремий потік, щоб не будити інтерфейс; на повноекранних відео й іграх нічого не робимо.
+/// Доглядає за нашими вікнами у фоновому потоці, не будячи інтерфейс:
+/// - прибирає системну рамку й заокруглення навколо порталів: Windows 11 малює їх
+///   навколо вікон без заголовка, і на світлому тлі рамку видно;
+/// - Windows інколи «опускає» вікна, закріплені поверх усіх (напр., коли активується інша
+///   закріплена програма), тож раз на `raise_every` піднімаємо наші вікна знову.
+///   Поки відкритий діалог вибору папки, піднімаємо лише його, щоб він не перестрибував
+///   з панеллю налаштувань. Поки інша програма на весь екран (відео, гра), нічого не робимо.
 #[cfg(windows)]
-pub fn keep_windows_on_top(interval: std::time::Duration) {
+pub fn watch_windows(raise_every: std::time::Duration) {
+    const TICK: std::time::Duration = std::time::Duration::from_millis(250);
     std::thread::spawn(move || {
+        let mut framed = std::collections::HashSet::new();
+        let mut since_raise = std::time::Duration::ZERO;
         loop {
-            std::thread::sleep(interval);
-            if !other_app_is_fullscreen() {
-                raise_own_windows();
+            std::thread::sleep(TICK);
+            let windows = own_visible_windows();
+            framed.retain(|hwnd| windows.contains(hwnd));
+            for &hwnd in &windows {
+                if framed.insert(hwnd) && !has_caption(hwnd) {
+                    remove_system_frame(hwnd);
+                }
+            }
+            since_raise += TICK;
+            if since_raise >= raise_every {
+                since_raise = std::time::Duration::ZERO;
+                if !other_app_is_fullscreen() {
+                    raise(&windows);
+                }
             }
         }
     });
 }
 
 #[cfg(not(windows))]
-pub fn keep_windows_on_top(_interval: std::time::Duration) {}
+pub fn watch_windows(_raise_every: std::time::Duration) {}
 
 #[cfg(windows)]
-fn raise_own_windows() {
-    use windows_sys::Win32::Foundation::{HWND, LPARAM};
+type Hwnd = windows_sys::Win32::Foundation::HWND;
+
+/// Видимі вікна нашої програми.
+#[cfg(windows)]
+fn own_visible_windows() -> Vec<Hwnd> {
+    use windows_sys::Win32::Foundation::LPARAM;
     use windows_sys::Win32::System::Threading::GetCurrentProcessId;
     use windows_sys::Win32::UI::WindowsAndMessaging::{
-        EnumWindows, GetWindowThreadProcessId, HWND_TOPMOST, IsWindowVisible, SWP_ASYNCWINDOWPOS,
-        SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOOWNERZORDER, SWP_NOSIZE, SetWindowPos,
+        EnumWindows, GetWindowThreadProcessId, IsWindowVisible,
     };
 
-    unsafe extern "system" fn visit(hwnd: HWND, _: LPARAM) -> i32 {
+    unsafe extern "system" fn visit(hwnd: Hwnd, found: LPARAM) -> i32 {
         let mut pid = 0;
         unsafe {
             GetWindowThreadProcessId(hwnd, &mut pid);
             if pid == GetCurrentProcessId() && IsWindowVisible(hwnd) != 0 {
-                // асинхронно: потік інтерфейсу застосує сам, без блокування
-                let flags = SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_ASYNCWINDOWPOS;
-                SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, flags);
+                (*(found as *mut Vec<Hwnd>)).push(hwnd);
             }
         }
         1 // далі по списку вікон
     }
-    unsafe { EnumWindows(Some(visit), 0) };
+    let mut found: Vec<Hwnd> = Vec::new();
+    unsafe { EnumWindows(Some(visit), &mut found as *mut Vec<Hwnd> as LPARAM) };
+    found
+}
+
+#[cfg(windows)]
+fn class_name(hwnd: Hwnd) -> String {
+    use windows_sys::Win32::UI::WindowsAndMessaging::GetClassNameW;
+    let mut class = [0u16; 64];
+    let len = unsafe { GetClassNameW(hwnd, class.as_mut_ptr(), class.len() as i32) }.max(0) as usize;
+    String::from_utf16_lossy(&class[..len])
+}
+
+#[cfg(windows)]
+fn has_caption(hwnd: Hwnd) -> bool {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{GWL_STYLE, GetWindowLongPtrW, WS_CAPTION};
+    let style = unsafe { GetWindowLongPtrW(hwnd, GWL_STYLE) } as u32;
+    style & WS_CAPTION == WS_CAPTION
+}
+
+#[cfg(windows)]
+fn remove_system_frame(hwnd: Hwnd) {
+    use windows_sys::Win32::Graphics::Dwm::{
+        DWMNCRP_DISABLED, DWMWA_BORDER_COLOR, DWMWA_COLOR_NONE, DWMWA_NCRENDERING_POLICY,
+        DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_DONOTROUND, DwmSetWindowAttribute,
+    };
+    let set = |attribute: i32, value: &u32| unsafe {
+        // на Windows 10 рамки й заокруглень немає, і помилку тут можна сміливо ігнорувати
+        DwmSetWindowAttribute(hwnd, attribute as u32, (value as *const u32).cast(), size_of::<u32>() as u32);
+    };
+    set(DWMWA_BORDER_COLOR, &DWMWA_COLOR_NONE);
+    set(DWMWA_WINDOW_CORNER_PREFERENCE, &(DWMWCP_DONOTROUND as u32));
+    set(DWMWA_NCRENDERING_POLICY, &(DWMNCRP_DISABLED as u32));
+}
+
+#[cfg(windows)]
+fn raise(windows: &[Hwnd]) {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        HWND_TOPMOST, SWP_ASYNCWINDOWPOS, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOOWNERZORDER, SWP_NOSIZE,
+        SetWindowPos,
+    };
+    // "#32770" - стандартні діалоги Windows, зокрема вибір папки
+    let dialogs: Vec<Hwnd> = windows.iter().copied().filter(|&hwnd| class_name(hwnd) == "#32770").collect();
+    let targets = if dialogs.is_empty() { windows } else { &dialogs[..] };
+    // асинхронно: потік інтерфейсу застосує сам, без блокування
+    let flags = SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_ASYNCWINDOWPOS;
+    for &hwnd in targets {
+        unsafe { SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, flags) };
+    }
 }
 
 /// Чи займає активне вікно іншої програми весь монітор (відео, гра, презентація).
@@ -146,7 +213,7 @@ fn other_app_is_fullscreen() -> bool {
     };
     use windows_sys::Win32::System::Threading::GetCurrentProcessId;
     use windows_sys::Win32::UI::WindowsAndMessaging::{
-        GetClassNameW, GetForegroundWindow, GetShellWindow, GetWindowRect, GetWindowThreadProcessId,
+        GetForegroundWindow, GetShellWindow, GetWindowRect, GetWindowThreadProcessId,
     };
     unsafe {
         let hwnd = GetForegroundWindow();
@@ -156,9 +223,7 @@ fn other_app_is_fullscreen() -> bool {
             return false;
         }
         // робочий стіл теж на весь екран, але це не відео і не гра
-        let mut class = [0u16; 16];
-        let len = GetClassNameW(hwnd, class.as_mut_ptr(), class.len() as i32).max(0) as usize;
-        if matches!(String::from_utf16_lossy(&class[..len]).as_str(), "WorkerW" | "Progman") {
+        if matches!(class_name(hwnd).as_str(), "WorkerW" | "Progman") {
             return false;
         }
         let mut window: RECT = std::mem::zeroed();

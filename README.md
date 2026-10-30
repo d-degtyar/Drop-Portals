@@ -1,88 +1,107 @@
 # Drop Portals
 
-Плаваючі вікна-портали в папки для Windows. Гортаєте папку з купою змішаних файлів:
-бачите документ, кидаєте його на портал «Документи», і він уже там. Бачите відео, кидаєте на «Відео».
+Floating folder portals for Windows. You scroll through a folder full of mixed files:
+see a document, drop it on the "Documents" portal and it is there. See a video, drop it on "Video".
 
-- Порталів скільки завгодно, кожен у своєму вікні поверх інших програм.
-- Портал може бути простим («усе сюди») або з правилами сортування, як у DSort:
-  за розширенням, маскою імені, розміром, з розкладанням по підпапках.
-- Великі файли переносяться у фоні, а на порталі видно прогрес.
-- Останнє кидання можна скасувати.
-- Один файл `DropPortals.exe` на ~5 МБ, без Python чи .NET. Запускається миттєво.
+[Українською](README.uk.md)
 
-Написано на Rust з [egui](https://github.com/emilk/egui).
+- As many portals as you like, each in its own always-on-top window.
+- A portal can be simple ("everything goes here") or sort files with rules, like DSort:
+  by extension, name mask or size, into subfolders.
+- Large files move in the background with progress on the portal.
+- The last drop can be undone.
+- A single ~5 MB `DropPortals.exe`, no Python or .NET needed. Starts instantly.
+- English and Ukrainian interface.
 
-## Як користуватись
+Written in Rust with [egui](https://github.com/emilk/egui).
 
-| Дія | Як |
+## Download
+
+Get `DropPortals.exe` from the [latest release](https://github.com/d-degtyar/Drop-Portals/releases/latest)
+and run it. No installation needed.
+
+The file is not code-signed yet, so Windows SmartScreen may warn on the first start:
+click **More info → Run anyway**.
+
+## How to use
+
+| Action | How |
 |---|---|
-| Новий портал | ПКМ на іконці в треї → «Новий портал» → порожній, Сортувальник або готовий набір (Документи, Відео, Зображення, Аудіо, Дизайн, Моушн і 3D, Шрифти, Архіви, Програми) |
-| Перенести файли | Перетягнути файли чи папки на портал |
-| Скопіювати замість переміщення | Тримати **Ctrl**, коли відпускаєте файли (або змінити дію в налаштуваннях порталу) |
-| Відкрити папку | Подвійний клік по порталу |
-| Пересунути / змінити розмір | Тягнути за портал / за правий нижній кут |
-| Налаштування, скасування, дублювання, видалення | ПКМ по порталу |
-| Показати всі портали | Клік по іконці в треї |
-| Автозапуск | Меню в треї → «Запускати з Windows» |
+| New portal | Right-click the tray icon → "New portal" → empty, Sorter or a preset (Documents, Video, Images, Audio, Design, Motion & 3D, Fonts, Archives, Apps) |
+| Move files | Drag files or folders onto a portal |
+| Copy instead of move | Hold **Ctrl** while dropping (or change the action in the portal settings) |
+| Open the folder | Double-click the portal |
+| Move / resize | Drag the portal / its bottom-right corner |
+| Settings, undo, duplicate, delete | Right-click the portal |
+| Show all portals | Click the tray icon |
+| Start with Windows, language | Tray menu |
 
-Якщо портал не приймає файл (наприклад, PDF на «Відео»), під час перетягування він стає сірим
-з червоною рамкою, а файл залишається на місці.
+If a portal does not take a file (say, a PDF on "Video"), it turns grey with a red outline
+while you drag, and the file stays where it was.
 
-## Правила
+## Rules
 
-Правило складається з умов і підпапки. Перше правило, що підійшло, вирішує, куди піде файл.
-Порожня умова означає «будь-що».
+A rule is a set of conditions plus a subfolder. The first rule that matches decides where a file goes.
+An empty condition means "anything".
 
-| Поле | Приклад |
+| Field | Example |
 |---|---|
-| Розширення | `pdf docx xlsx` |
-| Маска імені | `*invoice*`, `IMG_????` |
-| Мін / Макс, МБ | `100`: лише файли більше 100 МБ |
-| Підпапка | `Video`, `{EXT}`, `{year}-{month}`, `Footage\{ext}` |
+| Extensions | `pdf docx xlsx` |
+| Name mask | `*invoice*`, `IMG_????` |
+| Min / Max, MB | `100`: only files larger than 100 MB |
+| Subfolder | `Video`, `{EXT}`, `{year}-{month}`, `Footage\{ext}` |
 
-У шаблоні підпапки можна використовувати `{ext}`, `{EXT}`, `{name}`, `{year}`, `{month}` і `{day}`
-(дата зміни файлу).
+Subfolder templates can use `{ext}`, `{EXT}`, `{name}`, `{year}`, `{month}` and `{day}`
+(the file's modification date).
 
-«Файли без правила» визначає, що робити з файлом, який не підійшов під жодне правило:
-класти прямо в папку порталу або не приймати.
+"Files without a rule" decides what happens to a file that matches no rule:
+put it straight into the portal folder, or do not accept it.
 
-«Якщо файл уже є»: додати номер (`файл (2).mp4`), пропустити або замінити.
+"If the file exists": add a number (`file (2).mp4`), skip, or replace.
 
-Налаштування зберігаються в `%APPDATA%\DropPortals\config.json`. Відкрити папку можна з меню в треї.
+Settings live in `%APPDATA%\DropPortals\config.json`. The tray menu opens that folder.
 
-## Звідки взяти DropPortals.exe
+## Build from source
 
-- **GitHub Actions:** кожен пуш збирає програму на Windows. Готовий файл лежить
-  у вкладці *Actions* → останній запуск «Build» → *Artifacts* → `DropPortals-windows`.
-- **Самостійно на Windows:** встановіть [Rust](https://rustup.rs) і виконайте
-  ```bat
-  cargo build --release
-  ```
-  Результат: `target\release\DropPortals.exe`.
-- **З Linux (крос-збирання):**
-  ```sh
-  rustup target add x86_64-pc-windows-gnu
-  sudo apt install gcc-mingw-w64-x86-64
-  cargo build --release --target x86_64-pc-windows-gnu
-  ```
+On Windows, install [Rust](https://rustup.rs) and run:
 
-## Як влаштований код
+```bat
+cargo build --release
+```
 
-| Файл | Що робить |
+The result is `target\release\DropPortals.exe`.
+
+Cross-compiling from Linux:
+
+```sh
+rustup target add x86_64-pc-windows-gnu
+sudo apt install gcc-mingw-w64-x86-64
+cargo build --release --target x86_64-pc-windows-gnu
+```
+
+Every push is built and tested on Windows by GitHub Actions; the exe is attached to each run
+under *Artifacts*. Pushing a `v*` tag publishes a release with notes from [CHANGELOG.md](CHANGELOG.md).
+
+## Code layout
+
+| File | What it does |
 |---|---|
-| `src/main.rs` | запуск: одна копія програми, приховане головне вікно |
-| `src/app.rs` | стан програми: портали, команди, фонові перенесення, збереження |
-| `src/portal_view.rs` | вікно порталу: малювання, перетягування файлів, рух і розмір вікна |
-| `src/settings_view.rs` | панель налаштувань порталу |
-| `src/tray.rs` | іконка і меню в треї |
-| `src/rules.rs` | правила: чи підходить файл і куди його класти |
-| `src/mover.rs` | переміщення, копіювання, скасування |
-| `src/config.rs` | налаштування в JSON |
-| `src/presets.rs` | готові набори розширень |
-| `src/platform.rs` | Windows: Провідник, діалог папки, Ctrl, автозапуск |
-| `src/fonts.rs`, `src/icon.rs` | шрифти та іконка (іконку малює код, вона ж вшивається в `.exe` через `build.rs`) |
+| `src/main.rs` | startup: single instance, hidden main window |
+| `src/app.rs` | app state: portals, commands, background transfers, saving |
+| `src/portal_view.rs` | the portal window: drawing, file drops, moving and resizing |
+| `src/settings_view.rs` | the portal settings panel |
+| `src/tray.rs` | tray icon and menu |
+| `src/rules.rs` | rules: does a file match, and where does it go |
+| `src/mover.rs` | move, copy, undo |
+| `src/config.rs` | settings in JSON |
+| `src/presets.rs` | ready-made extension sets |
+| `src/i18n.rs` | interface languages |
+| `src/platform.rs` | Windows bits: Explorer, folder dialog, Ctrl key, autostart, keeping portals on top |
+| `src/fonts.rs`, `src/icon.rs` | fonts and the icon (drawn in code and embedded into the exe by `build.rs`) |
 
-Перевірки, ті самі, що в GitHub Actions:
+UI strings are written as pairs right where they are used: `tr("Відкрити папку", "Open folder")`.
+
+The same checks as in CI:
 
 ```sh
 cargo fmt --check
@@ -90,12 +109,12 @@ cargo clippy --all-targets -- -D warnings
 cargo test
 ```
 
-## Обмеження
+## Limitations
 
-- Вкладення, які перетягуються прямо з Outlook або з браузера, не є файлами на диску,
-  тож портал їх не приймає. Спочатку збережіть їх у папку.
-- Скасовується лише останнє кидання на кожен портал, і тільки поки програма запущена.
+- Attachments dragged straight from Outlook or a browser are not files on disk,
+  so a portal cannot take them. Save them to a folder first.
+- Only the last drop on each portal can be undone, and only while the app is running.
 
-## Ліцензія
+## License
 
 [MIT](LICENSE)

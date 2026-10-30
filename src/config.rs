@@ -5,6 +5,8 @@ use std::{env, fs, io};
 
 use serde::{Deserialize, Serialize};
 
+use crate::i18n::{Lang, tr};
+
 /// Що робити з файлом: перемістити чи скопіювати.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -102,7 +104,7 @@ impl Default for Portal {
     fn default() -> Self {
         Self {
             id: new_id(),
-            name: "Новий портал".to_owned(),
+            name: tr("Новий портал", "New portal").to_owned(),
             folder: String::new(),
             color: "#4F7CFF".to_owned(),
             mode: Mode::Move,
@@ -122,6 +124,14 @@ impl Default for Portal {
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct AppConfig {
     pub portals: Vec<Portal>,
+    /// Мова інтерфейсу; `None` - як у Windows.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub language: Option<Lang>,
+}
+
+/// Назва, яку портал отримує до вибору папки (будь-якою мовою).
+pub fn is_placeholder_name(name: &str) -> bool {
+    matches!(name, "Новий портал" | "New portal" | "Портал")
 }
 
 /// Невідоме значення (напр. `"mode": "teleport"`) стає значенням за замовчуванням.
@@ -179,7 +189,8 @@ pub fn load(path: &Path) -> AppConfig {
             .collect(),
         _ => Vec::new(),
     };
-    AppConfig { portals }
+    let language = root.get("language").and_then(|value| serde_json::from_value(value.clone()).ok());
+    AppConfig { portals, language }
 }
 
 /// Пише у тимчасовий файл і підміняє, щоб збій не залишив пів-конфігу.
@@ -212,6 +223,7 @@ mod tests {
                 presets::sorter_portal("D:/x"),
                 Portal { name: "Відео".into(), mode: Mode::Copy, ..Portal::default() },
             ],
+            language: Some(Lang::En),
         };
         save(&config, &path).unwrap();
         assert_eq!(load(&path), config);
